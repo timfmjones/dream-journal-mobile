@@ -1,4 +1,4 @@
-// src/config/firebase.ts
+// src/config/firebase.ts (corrected)
 
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, initializeAuth, getReactNativePersistence } from 'firebase/auth';
@@ -14,10 +14,10 @@ const firebaseConfig = {
   appId: Constants.expoConfig?.extra?.firebaseConfig?.appId || process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
-let app;
-let auth;
+let app: any;
+let auth: any;
 
-export const initializeFirebase = async () => {
+export const initializeApp = async () => {
   try {
     if (getApps().length === 0) {
       app = initializeApp(firebaseConfig);
