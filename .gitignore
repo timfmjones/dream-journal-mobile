@@ -1,0 +1,47 @@
+# Expo
+.expo/
+.expo
+.expo-shared/
+dist/
+web-build/
+
+# Dependencies
+node_modules/
+
+# Lock files (keep only one)
+yarn.lock
+# package-lock.json  # Comment out if using npm
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Native
+ios/
+android/
+
+# Testing
+coverage/
+
+# Misc
+.DS_Store
+*.pem
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# Editor
+.vscode/
+.idea/
+
+# TypeScript
+*.tsbuildinfo

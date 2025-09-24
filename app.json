@@ -1,0 +1,91 @@
+{
+  "expo": {
+    "name": "DreamSprout",
+    "slug": "dreamsprout",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#6B46C1"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.dreamsprout.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "DreamSprout needs access to your microphone to record voice memos of your dreams.",
+        "NSPhotoLibraryUsageDescription": "DreamSprout needs access to save generated dream illustrations to your photo library.",
+        "NSPhotoLibraryAddUsageDescription": "DreamSprout needs permission to save generated dream illustrations to your photo library.",
+        "NSFaceIDUsageDescription": "DreamSprout uses Face ID to secure your private dream journal.",
+        "NSUserTrackingUsageDescription": "This identifier will be used to deliver personalized ads to you.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "associatedDomains": [
+        "applinks:dreamsprout.app"
+      ]
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#6B46C1"
+      },
+      "package": "com.dreamsprout.app",
+      "versionCode": 1,
+      "permissions": [
+        "RECORD_AUDIO",
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE",
+        "USE_FINGERPRINT",
+        "USE_BIOMETRIC",
+        "VIBRATE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      "expo-av",
+      "expo-secure-store",
+      "expo-local-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#6B46C1",
+          "sounds": ["./assets/sounds/notification.wav"]
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "your-eas-project-id"
+      },
+      "apiUrl": "https://dream-journal-backend-production.up.railway.app/api",
+      "firebaseConfig": {
+        "apiKey": "${FIREBASE_API_KEY}",
+        "authDomain": "${FIREBASE_AUTH_DOMAIN}",
+        "projectId": "${FIREBASE_PROJECT_ID}",
+        "storageBucket": "${FIREBASE_STORAGE_BUCKET}",
+        "messagingSenderId": "${FIREBASE_MESSAGING_SENDER_ID}",
+        "appId": "${FIREBASE_APP_ID}"
+      }
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/your-eas-project-id"
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    }
+  }
+}
