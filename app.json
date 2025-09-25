@@ -86,6 +86,7 @@
     },
     "runtimeVersion": {
       "policy": "sdkVersion"
-    }
+    },
+    "jsEngine": "hermes"
   }
 }
