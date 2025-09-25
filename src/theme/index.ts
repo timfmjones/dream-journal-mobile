@@ -1,11 +1,10 @@
 // src/theme/index.ts
 
-import { DefaultTheme, MD3Theme } from 'react-native-paper';
+// Removed react-native-paper import
+// import { DefaultTheme, MD3Theme } from 'react-native-paper';
 
 export const lightTheme = {
-  ...DefaultTheme,
   colors: {
-    ...DefaultTheme.colors,
     primary: '#6B46C1',
     secondary: '#7C3AED',
     accent: '#F59E0B',
@@ -36,9 +35,7 @@ export const lightTheme = {
 };
 
 export const darkTheme = {
-  ...DefaultTheme,
   colors: {
-    ...DefaultTheme.colors,
     primary: '#7C3AED',
     secondary: '#8B5CF6',
     accent: '#FCD34D',

@@ -1,5 +1,4 @@
-// src/screens/AnalysisScreen.tsx
-
+// src/screens/AnalysisScreen.tsx (move from components to screens)
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
