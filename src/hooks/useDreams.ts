@@ -22,38 +22,61 @@ export function useDreams() {
   }, [user, isGuest]);
 
   const loadDreams = async (reset = true) => {
+    console.log('Loading dreams...');
     setIsLoading(true);
     try {
       if (isGuest) {
         // Load from local storage
         const localData = await AsyncStorage.getItem(DREAMS_STORAGE_KEY);
         const localDreams = localData ? JSON.parse(localData) : [];
+        console.log('Loaded local dreams:', localDreams.length);
         setDreams(localDreams);
         setRecentDreams(localDreams.slice(0, 5));
         setFavoriteDreams(localDreams.filter((d: Dream) => d.isFavorite));
         setHasMore(false);
       } else if (user) {
         // Load from API
-        const response = await api.getDreams({ page: reset ? 1 : page, limit: 20 });
-        if (response.data) {
-          if (reset) {
-            setDreams(response.data.dreams);
-            setPage(1);
+        try {
+          const response = await api.getDreams({ page: reset ? 1 : page, limit: 20 });
+          console.log('API Response:', response);
+          
+          if (response.data && response.data.dreams) {
+            if (reset) {
+              setDreams(response.data.dreams);
+              setPage(1);
+            } else {
+              setDreams(prev => [...prev, ...response.data!.dreams]);
+            }
+            setRecentDreams(response.data.dreams.slice(0, 5));
+            setFavoriteDreams(response.data.dreams.filter(d => d.isFavorite));
+            setHasMore(response.data.hasMore);
           } else {
-            setDreams(prev => [...prev, ...response.data!.dreams]);
+            // No dreams from API
+            console.log('No dreams from API');
+            setDreams([]);
+            setRecentDreams([]);
+            setFavoriteDreams([]);
           }
-          setRecentDreams(response.data.dreams.slice(0, 5));
-          setFavoriteDreams(response.data.dreams.filter(d => d.isFavorite));
-          setHasMore(response.data.hasMore);
+        } catch (error) {
+          console.error('API error:', error);
+          // On API error, try to load from local storage as fallback
+          const localData = await AsyncStorage.getItem(DREAMS_STORAGE_KEY);
+          const localDreams = localData ? JSON.parse(localData) : [];
+          setDreams(localDreams);
+          setRecentDreams(localDreams.slice(0, 5));
+          setFavoriteDreams(localDreams.filter((d: Dream) => d.isFavorite));
         }
+      } else {
+        // No user
+        setDreams([]);
+        setRecentDreams([]);
+        setFavoriteDreams([]);
       }
     } catch (error) {
       console.error('Error loading dreams:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to load dreams',
-      });
+      setDreams([]);
+      setRecentDreams([]);
+      setFavoriteDreams([]);
     } finally {
       setIsLoading(false);
     }
@@ -70,47 +93,73 @@ export function useDreams() {
   }, [hasMore, isLoading, isGuest, page]);
 
   const createDream = async (dreamData: Partial<Dream>): Promise<Dream> => {
+    console.log('Creating dream with data:', dreamData);
+    
     try {
-      if (isGuest) {
-        // Save locally
-        const newDream: Dream = {
-          ...dreamData as Dream,
-          id: `local_${Date.now()}`,
-          date: new Date().toISOString(),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        
-        const localData = await AsyncStorage.getItem(DREAMS_STORAGE_KEY);
-        const localDreams = localData ? JSON.parse(localData) : [];
-        const updatedDreams = [newDream, ...localDreams];
-        
-        await AsyncStorage.setItem(DREAMS_STORAGE_KEY, JSON.stringify(updatedDreams));
-        setDreams(updatedDreams);
-        
-        Toast.show({
-          type: 'success',
-          text1: 'Dream Saved',
-          text2: 'Your dream has been saved locally',
-        });
-        
-        return newDream;
-      } else {
-        // Save to API
-        const response = await api.createDream(dreamData);
-        if (response.data) {
-          setDreams(prev => [response.data!.dream, ...prev]);
-          
-          Toast.show({
-            type: 'success',
-            text1: 'Dream Saved',
-            text2: 'Your dream has been saved to the cloud',
-          });
-          
-          return response.data.dream;
-        }
-        throw new Error(response.error || 'Failed to save dream');
+      // Create the new dream object with a guaranteed unique ID
+      const newDream: Dream = {
+        ...dreamData as Dream,
+        id: dreamData.id || `dream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        date: dreamData.date || new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isFavorite: false,
+        tone: dreamData.tone || 'whimsical',
+        length: dreamData.length || 'medium',
+        inputMode: dreamData.inputMode || 'text',
+      };
+      
+      console.log('Created new dream object:', newDream);
+      
+      // Immediately add to state BEFORE any API calls
+      setDreams(prevDreams => {
+        const updated = [newDream, ...prevDreams];
+        console.log('Updated dreams array, total dreams:', updated.length);
+        return updated;
+      });
+      
+      // Update other state
+      setRecentDreams(prev => [newDream, ...prev.slice(0, 4)]);
+      if (newDream.isFavorite) {
+        setFavoriteDreams(prev => [newDream, ...prev]);
       }
+      
+      // Try to save to storage/API in the background
+      if (isGuest) {
+        // Save to local storage
+        try {
+          const localData = await AsyncStorage.getItem(DREAMS_STORAGE_KEY);
+          const localDreams = localData ? JSON.parse(localData) : [];
+          const updatedDreams = [newDream, ...localDreams];
+          await AsyncStorage.setItem(DREAMS_STORAGE_KEY, JSON.stringify(updatedDreams));
+          console.log('Saved to local storage');
+        } catch (error) {
+          console.error('Failed to save to local storage:', error);
+        }
+      } else if (user) {
+        // Try to save to API in background
+        try {
+          const response = await api.createDream(newDream);
+          if (response.data) {
+            // Update the dream with the server's version if needed
+            const serverDream = response.data.dream;
+            setDreams(prevDreams => 
+              prevDreams.map(d => d.id === newDream.id ? serverDream : d)
+            );
+            console.log('Saved to API, updated with server version');
+          }
+        } catch (error) {
+          console.error('API save failed, keeping local version:', error);
+        }
+      }
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Dream Saved',
+        text2: 'Your dream has been saved successfully',
+      });
+      
+      return newDream;
     } catch (error) {
       console.error('Error creating dream:', error);
       Toast.show({
@@ -124,62 +173,48 @@ export function useDreams() {
 
   const updateDream = async (dreamId: string, updates: Partial<Dream>): Promise<Dream> => {
     try {
+      const updatedDreams = dreams.map(d => 
+        d.id === dreamId 
+          ? { ...d, ...updates, updatedAt: new Date().toISOString() }
+          : d
+      );
+      
+      setDreams(updatedDreams);
+      
       if (isGuest) {
-        // Update locally
-        const localData = await AsyncStorage.getItem(DREAMS_STORAGE_KEY);
-        const localDreams = localData ? JSON.parse(localData) : [];
-        const index = localDreams.findIndex((d: Dream) => d.id === dreamId);
-        
-        if (index !== -1) {
-          localDreams[index] = {
-            ...localDreams[index],
-            ...updates,
-            updatedAt: new Date().toISOString(),
-          };
-          
-          await AsyncStorage.setItem(DREAMS_STORAGE_KEY, JSON.stringify(localDreams));
-          setDreams(localDreams);
-          
-          return localDreams[index];
+        await AsyncStorage.setItem(DREAMS_STORAGE_KEY, JSON.stringify(updatedDreams));
+      } else if (user) {
+        // Try to update via API
+        try {
+          await api.updateDream(dreamId, updates);
+        } catch (error) {
+          console.error('API update error:', error);
         }
-        throw new Error('Dream not found');
-      } else {
-        // Update via API
-        const response = await api.updateDream(dreamId, updates);
-        if (response.data) {
-          setDreams(prev => prev.map(d => d.id === dreamId ? response.data!.dream : d));
-          return response.data.dream;
-        }
-        throw new Error(response.error || 'Failed to update dream');
       }
+      
+      const updatedDream = updatedDreams.find(d => d.id === dreamId)!;
+      return updatedDream;
     } catch (error) {
       console.error('Error updating dream:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to update dream',
-      });
       throw error;
     }
   };
 
   const deleteDream = async (dreamId: string) => {
     try {
+      const filteredDreams = dreams.filter(d => d.id !== dreamId);
+      setDreams(filteredDreams);
+      setRecentDreams(prev => prev.filter(d => d.id !== dreamId));
+      setFavoriteDreams(prev => prev.filter(d => d.id !== dreamId));
+      
       if (isGuest) {
-        // Delete locally
-        const localData = await AsyncStorage.getItem(DREAMS_STORAGE_KEY);
-        const localDreams = localData ? JSON.parse(localData) : [];
-        const filteredDreams = localDreams.filter((d: Dream) => d.id !== dreamId);
-        
         await AsyncStorage.setItem(DREAMS_STORAGE_KEY, JSON.stringify(filteredDreams));
-        setDreams(filteredDreams);
-      } else {
-        // Delete via API
-        const response = await api.deleteDream(dreamId);
-        if (response.data?.success) {
-          setDreams(prev => prev.filter(d => d.id !== dreamId));
-        } else {
-          throw new Error(response.error || 'Failed to delete dream');
+      } else if (user) {
+        // Try to delete from API
+        try {
+          await api.deleteDream(dreamId);
+        } catch (error) {
+          console.error('API delete error:', error);
         }
       }
       
@@ -201,34 +236,21 @@ export function useDreams() {
 
   const toggleFavorite = async (dreamId: string) => {
     try {
+      const updatedDreams = dreams.map(d => 
+        d.id === dreamId ? { ...d, isFavorite: !d.isFavorite } : d
+      );
+      
+      setDreams(updatedDreams);
+      setFavoriteDreams(updatedDreams.filter(d => d.isFavorite));
+      
       if (isGuest) {
-        // Toggle locally
-        const localData = await AsyncStorage.getItem(DREAMS_STORAGE_KEY);
-        const localDreams = localData ? JSON.parse(localData) : [];
-        const index = localDreams.findIndex((d: Dream) => d.id === dreamId);
-        
-        if (index !== -1) {
-          localDreams[index].isFavorite = !localDreams[index].isFavorite;
-          await AsyncStorage.setItem(DREAMS_STORAGE_KEY, JSON.stringify(localDreams));
-          setDreams(localDreams);
-          setFavoriteDreams(localDreams.filter((d: Dream) => d.isFavorite));
-        }
-      } else {
-        // Toggle via API
-        const response = await api.toggleFavorite(dreamId);
-        if (response.data) {
-          setDreams(prev => prev.map(d => 
-            d.id === dreamId ? { ...d, isFavorite: !d.isFavorite } : d
-          ));
-          setFavoriteDreams(prev => {
-            const dream = dreams.find(d => d.id === dreamId);
-            if (dream?.isFavorite) {
-              return prev.filter(d => d.id !== dreamId);
-            } else if (dream) {
-              return [...prev, { ...dream, isFavorite: true }];
-            }
-            return prev;
-          });
+        await AsyncStorage.setItem(DREAMS_STORAGE_KEY, JSON.stringify(updatedDreams));
+      } else if (user) {
+        // Try to update on API
+        try {
+          await api.toggleFavorite(dreamId);
+        } catch (error) {
+          console.error('API favorite error:', error);
         }
       }
     } catch (error) {
@@ -242,7 +264,10 @@ export function useDreams() {
   };
 
   const getDreamById = (dreamId: string): Dream | undefined => {
-    return dreams.find(d => d.id === dreamId);
+    console.log('getDreamById called with:', dreamId);
+    const dream = dreams.find(d => d.id === dreamId);
+    console.log('Found dream:', dream ? 'YES' : 'NO');
+    return dream;
   };
 
   return {

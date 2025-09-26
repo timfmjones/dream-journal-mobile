@@ -8,9 +8,9 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  Image,
-  Share,
   ActivityIndicator,
+  Dimensions,
+  Share,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,13 +18,14 @@ import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Audio } from 'expo-av';
 import Toast from 'react-native-toast-message';
 
 import { useTheme } from '../contexts/ThemeContext';
 import { useDreams } from '../hooks/useDreams';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { api } from '../services/api';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 type RoutePropType = RouteProp<RootStackParamList, 'DreamDetail'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -36,185 +37,26 @@ export default function DreamDetailScreen() {
   const insets = useSafeAreaInsets();
   const { getDreamById, toggleFavorite, deleteDream, updateDream } = useDreams();
   
-  const [dream, setDream] = useState(getDreamById(route.params.dreamId));
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const dreamId = route.params?.dreamId;
+  const foundDream = getDreamById(dreamId);
+  
+  const [dream, setDream] = useState(foundDream);
   const [activeTab, setActiveTab] = useState<'dream' | 'story' | 'analysis'>('dream');
-
-  useEffect(() => {
-    // Set header options
-    navigation.setOptions({
-      headerRight: () => (
-        <View style={{ flexDirection: 'row', gap: 12 }}>
-          <TouchableOpacity onPress={handleShare}>
-            <Ionicons name="share-outline" size={24} color={theme.colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleToggleFavorite}>
-            <Ionicons 
-              name={dream?.isFavorite ? "star" : "star-outline"} 
-              size={24} 
-              color={dream?.isFavorite ? theme.colors.accent : theme.colors.primary}
-            />
-          </TouchableOpacity>
-        </View>
-      ),
-    });
-  }, [dream]);
-
-  useEffect(() => {
-    return () => {
-      if (sound) {
-        sound.unloadAsync();
-      }
-    };
-  }, [sound]);
-
-  const handleToggleFavorite = async () => {
-    if (!dream) return;
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    await toggleFavorite(dream.id);
-    setDream({ ...dream, isFavorite: !dream.isFavorite });
-  };
-
-  const handleDelete = () => {
-    Alert.alert(
-      'Delete Dream',
-      'Are you sure you want to delete this dream? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            if (!dream) return;
-            await deleteDream(dream.id);
-            navigation.goBack();
-            Toast.show({
-              type: 'success',
-              text1: 'Dream Deleted',
-              text2: 'The dream has been removed from your journal.',
-            });
-          },
-        },
-      ]
-    );
-  };
-
-  const handleShare = async () => {
-    if (!dream) return;
-    
-    const content = dream.story || dream.originalDream;
-    const message = `✨ ${dream.title}\n\n${content}\n\nCreated with DreamSprout 🌙`;
-    
-    try {
-      await Share.share({
-        message,
-        title: dream.title,
-      });
-    } catch (error) {
-      console.error('Share error:', error);
-    }
-  };
-
-  const handleGenerateStory = async () => {
-    if (!dream || dream.story) return;
-    
-    setIsGenerating(true);
-    try {
-      const result = await api.generateStory(
-        dream.originalDream,
-        'whimsical',
-        'medium'
-      );
-      
-      if (result.data) {
-        await updateDream(dream.id, { story: result.data.story });
-        setDream({ ...dream, story: result.data.story });
-        setActiveTab('story');
-        Toast.show({
-          type: 'success',
-          text1: 'Story Generated!',
-          text2: 'Your fairy tale is ready.',
-        });
-      }
-    } catch (error) {
-      Toast.show({
-        type: 'error',
-        text1: 'Generation Failed',
-        text2: 'Unable to generate story. Please try again.',
-      });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleGenerateAnalysis = async () => {
-    if (!dream || dream.analysis) return;
-    
-    setIsGenerating(true);
-    try {
-      const result = await api.analyzeDream(dream.originalDream, dream.id);
-      
-      if (result.data) {
-        await updateDream(dream.id, { analysis: result.data.analysis });
-        setDream({ ...dream, analysis: result.data.analysis });
-        setActiveTab('analysis');
-        Toast.show({
-          type: 'success',
-          text1: 'Analysis Complete!',
-          text2: 'Your dream insights are ready.',
-        });
-      }
-    } catch (error) {
-      Toast.show({
-        type: 'error',
-        text1: 'Analysis Failed',
-        text2: 'Unable to analyze dream. Please try again.',
-      });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const playAudio = async () => {
-    if (!dream?.audioUri) return;
-    
-    try {
-      if (sound) {
-        await sound.unloadAsync();
-      }
-      
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: dream.audioUri },
-        { shouldPlay: true }
-      );
-      
-      setSound(newSound);
-      setIsPlaying(true);
-      
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if ('didJustFinish' in status && status.didJustFinish) {
-          setIsPlaying(false);
-        }
-      });
-    } catch (error) {
-      console.error('Audio playback error:', error);
-    }
-  };
-
-  if (!dream) {
-    return (
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <Text style={{ color: theme.colors.text }}>Dream not found</Text>
-      </View>
-    );
-  }
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const styles = StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: theme.colors.background,
+      minHeight: SCREEN_HEIGHT,
+    },
+    headerGradient: {
+      height: 150,
+      width: '100%',
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
     },
     tabBar: {
       flexDirection: 'row',
@@ -223,6 +65,11 @@ export default function DreamDetailScreen() {
       backgroundColor: theme.colors.surface,
       borderBottomWidth: 1,
       borderBottomColor: theme.colors.border,
+      elevation: 2,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 3,
     },
     tab: {
       flex: 1,
@@ -247,27 +94,16 @@ export default function DreamDetailScreen() {
     },
     content: {
       padding: 20,
-      paddingBottom: 100,
+      paddingBottom: 120,
     },
     header: {
-      marginBottom: 20,
-    },
-    date: {
-      fontSize: 14,
-      fontFamily: 'Inter-Regular',
-      color: theme.colors.textSecondary,
-      marginBottom: 8,
-    },
-    title: {
-      fontSize: 28,
-      fontFamily: 'Playfair-Bold',
-      color: theme.colors.text,
-      marginBottom: 12,
+      marginBottom: 24,
     },
     metaContainer: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: 8,
+      marginBottom: 12,
     },
     badge: {
       flexDirection: 'row',
@@ -277,42 +113,66 @@ export default function DreamDetailScreen() {
       paddingVertical: 6,
       borderRadius: 16,
       gap: 4,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
     },
     badgeText: {
       fontSize: 12,
       fontFamily: 'Inter-Medium',
       color: theme.colors.textSecondary,
     },
+    date: {
+      fontSize: 14,
+      fontFamily: 'Inter-Regular',
+      color: theme.colors.textSecondary,
+      marginBottom: 8,
+    },
+    title: {
+      fontSize: 32,
+      fontFamily: 'Playfair-Bold',
+      color: theme.colors.text,
+      marginBottom: 16,
+      lineHeight: 38,
+    },
     section: {
-      marginBottom: 24,
+      marginBottom: 32,
     },
     sectionTitle: {
-      fontSize: 18,
+      fontSize: 20,
       fontFamily: 'Inter-SemiBold',
       color: theme.colors.text,
-      marginBottom: 12,
+      marginBottom: 16,
+    },
+    contentCard: {
+      backgroundColor: theme.colors.surface,
+      borderRadius: 16,
+      padding: 20,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 8,
+      elevation: 2,
     },
     dreamText: {
       fontSize: 16,
       fontFamily: 'Inter-Regular',
       color: theme.colors.text,
-      lineHeight: 24,
-      backgroundColor: theme.colors.surface,
-      padding: 16,
-      borderRadius: 12,
+      lineHeight: 26,
     },
     storyContainer: {
       backgroundColor: theme.colors.surface,
-      borderRadius: 12,
-      padding: 16,
-      borderLeftWidth: 3,
+      borderRadius: 16,
+      padding: 20,
+      borderLeftWidth: 4,
       borderLeftColor: theme.colors.primary,
     },
     analysisContainer: {
       backgroundColor: theme.colors.surface,
-      borderRadius: 12,
-      padding: 16,
-      borderLeftWidth: 3,
+      borderRadius: 16,
+      padding: 20,
+      borderLeftWidth: 4,
       borderLeftColor: theme.colors.secondary,
     },
     generateButton: {
@@ -320,32 +180,41 @@ export default function DreamDetailScreen() {
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: theme.colors.primary,
-      paddingVertical: 14,
-      paddingHorizontal: 20,
+      paddingVertical: 16,
+      paddingHorizontal: 24,
       borderRadius: 12,
       gap: 8,
-      marginTop: 16,
+      shadowColor: theme.colors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 4,
     },
     generateButtonText: {
       fontSize: 16,
       fontFamily: 'Inter-SemiBold',
       color: 'white',
     },
-    imageGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 12,
-      marginTop: 16,
+    emptyState: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 40,
+      backgroundColor: theme.colors.surface,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
     },
-    imageContainer: {
-      width: '48%',
-      aspectRatio: 1,
-      borderRadius: 12,
-      overflow: 'hidden',
+    emptyStateIcon: {
+      marginBottom: 16,
+      opacity: 0.5,
     },
-    image: {
-      width: '100%',
-      height: '100%',
+    emptyStateText: {
+      fontSize: 16,
+      fontFamily: 'Inter-Regular',
+      color: theme.colors.textSecondary,
+      textAlign: 'center',
+      marginBottom: 20,
+      lineHeight: 24,
     },
     floatingActions: {
       position: 'absolute',
@@ -363,9 +232,19 @@ export default function DreamDetailScreen() {
       paddingVertical: 14,
       borderRadius: 12,
       gap: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
     },
     primaryAction: {
       backgroundColor: theme.colors.primary,
+    },
+    secondaryAction: {
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
     },
     dangerAction: {
       backgroundColor: theme.colors.error,
@@ -375,10 +254,209 @@ export default function DreamDetailScreen() {
       fontFamily: 'Inter-SemiBold',
       color: 'white',
     },
+    secondaryActionText: {
+      fontSize: 14,
+      fontFamily: 'Inter-SemiBold',
+      color: theme.colors.text,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: theme.colors.background,
+    },
+    errorContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: theme.colors.background,
+      padding: 20,
+    },
+    errorText: {
+      fontSize: 18,
+      fontFamily: 'Inter-Medium',
+      color: theme.colors.text,
+      marginBottom: 20,
+      textAlign: 'center',
+    },
+    backButton: {
+      padding: 10,
+      marginTop: 20,
+    },
+    backButtonText: {
+      color: theme.colors.primary,
+      fontSize: 16,
+      fontFamily: 'Inter-Medium',
+    },
   });
+
+  useEffect(() => {
+    // Set header options
+    navigation.setOptions({
+      headerRight: () => dream ? (
+        <View style={{ flexDirection: 'row', gap: 12, paddingRight: 16 }}>
+          <TouchableOpacity onPress={handleShare}>
+            <Ionicons name="share-outline" size={24} color={theme.colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleToggleFavorite}>
+            <Ionicons 
+              name={dream?.isFavorite ? "star" : "star-outline"} 
+              size={24} 
+              color={dream?.isFavorite ? theme.colors.accent : theme.colors.primary}
+            />
+          </TouchableOpacity>
+        </View>
+      ) : null,
+    });
+  }, [dream, navigation]);
+
+  const handleToggleFavorite = async () => {
+    if (!dream) return;
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      await toggleFavorite(dream.id);
+      setDream({ ...dream, isFavorite: !dream.isFavorite });
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!dream) return;
+    
+    const content = dream.story || dream.originalDream;
+    const message = `✨ ${dream.title}\n\n${content}\n\nShared from DreamSprout 🌙`;
+    
+    try {
+      await Share.share({
+        message,
+        title: dream.title,
+      });
+    } catch (error) {
+      console.error('Share error:', error);
+    }
+  };
+
+  const handleGenerateStory = async () => {
+    if (!dream) return;
+    
+    setIsGenerating(true);
+    try {
+      const result = await api.generateStory(
+        dream.originalDream,
+        dream.tone || 'whimsical',
+        dream.length || 'medium'
+      );
+      
+      if (result.data) {
+        const updatedDream = await updateDream(dream.id, { story: result.data.story });
+        setDream(updatedDream);
+        setActiveTab('story');
+        Toast.show({
+          type: 'success',
+          text1: 'Story Generated!',
+          text2: 'Your fairy tale is ready.',
+        });
+      }
+    } catch (error) {
+      Toast.show({
+        type: 'error',
+        text1: 'Generation Failed',
+        text2: 'Unable to generate story. Please try again.',
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateAnalysis = async () => {
+    if (!dream) return;
+    
+    setIsGenerating(true);
+    try {
+      const result = await api.analyzeDream(dream.originalDream, dream.id);
+      
+      if (result.data) {
+        const updatedDream = await updateDream(dream.id, { analysis: result.data.analysis });
+        setDream(updatedDream);
+        setActiveTab('analysis');
+        Toast.show({
+          type: 'success',
+          text1: 'Analysis Complete!',
+          text2: 'Your dream insights are ready.',
+        });
+      }
+    } catch (error) {
+      Toast.show({
+        type: 'error',
+        text1: 'Analysis Failed',
+        text2: 'Unable to analyze dream. Please try again.',
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleDelete = () => {
+    if (!dream) return;
+    
+    Alert.alert(
+      'Delete Dream',
+      'Are you sure you want to delete this dream? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteDream(dream.id);
+            navigation.goBack();
+            Toast.show({
+              type: 'success',
+              text1: 'Dream Deleted',
+              text2: 'The dream has been removed.',
+            });
+          },
+        },
+      ]
+    );
+  };
+
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { 
+        weekday: 'long',
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+    } catch {
+      return 'No date';
+    }
+  };
+
+  // Handle no dream found
+  if (!dream) {
+    return (
+      <View style={styles.errorContainer}>
+        <Ionicons name="moon-outline" size={64} color={theme.colors.textSecondary} />
+        <Text style={styles.errorText}>Dream not found</Text>
+        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <Text style={styles.backButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
+      {/* Background Gradient */}
+      <LinearGradient
+        colors={[theme.colors.primary + '20', 'transparent']}
+        style={styles.headerGradient}
+      />
+
       {/* Tab Bar */}
       <View style={styles.tabBar}>
         <TouchableOpacity
@@ -410,7 +488,7 @@ export default function DreamDetailScreen() {
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.date}>{dream.date}</Text>
+          <Text style={styles.date}>{formatDate(dream.date)}</Text>
           <Text style={styles.title}>{dream.title}</Text>
           <View style={styles.metaContainer}>
             {dream.inputMode === 'voice' && (
@@ -436,20 +514,9 @@ export default function DreamDetailScreen() {
         {activeTab === 'dream' && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Original Dream</Text>
-            <Text style={styles.dreamText}>{dream.originalDream}</Text>
-            
-            {dream.inputMode === 'voice' && dream.audioUri && (
-              <TouchableOpacity
-                style={styles.generateButton}
-                onPress={playAudio}
-                disabled={isPlaying}
-              >
-                <Ionicons name={isPlaying ? "pause" : "play"} size={20} color="white" />
-                <Text style={styles.generateButtonText}>
-                  {isPlaying ? 'Playing...' : 'Play Recording'}
-                </Text>
-              </TouchableOpacity>
-            )}
+            <View style={styles.contentCard}>
+              <Text style={styles.dreamText}>{dream.originalDream}</Text>
+            </View>
           </View>
         )}
 
@@ -457,35 +524,30 @@ export default function DreamDetailScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Fairy Tale</Text>
             {dream.story ? (
-              <>
-                <View style={styles.storyContainer}>
-                  <Text style={styles.dreamText}>{dream.story}</Text>
-                </View>
-                {dream.images && dream.images.length > 0 && (
-                  <View style={styles.imageGrid}>
-                    {dream.images.map((image, index) => (
-                      <View key={index} style={styles.imageContainer}>
-                        <Image source={{ uri: image.url }} style={styles.image} />
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </>
+              <View style={styles.storyContainer}>
+                <Text style={styles.dreamText}>{dream.story}</Text>
+              </View>
             ) : (
-              <TouchableOpacity
-                style={styles.generateButton}
-                onPress={handleGenerateStory}
-                disabled={isGenerating}
-              >
-                {isGenerating ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Ionicons name="sparkles" size={20} color="white" />
-                )}
-                <Text style={styles.generateButtonText}>
-                  {isGenerating ? 'Generating...' : 'Generate Fairy Tale'}
+              <View style={styles.emptyState}>
+                <Ionicons name="sparkles-outline" size={48} color={theme.colors.textSecondary} style={styles.emptyStateIcon} />
+                <Text style={styles.emptyStateText}>
+                  Transform your dream into a magical fairy tale
                 </Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.generateButton}
+                  onPress={handleGenerateStory}
+                  disabled={isGenerating}
+                >
+                  {isGenerating ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Ionicons name="sparkles" size={20} color="white" />
+                  )}
+                  <Text style={styles.generateButtonText}>
+                    {isGenerating ? 'Generating...' : 'Generate Fairy Tale'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         )}
@@ -498,20 +560,26 @@ export default function DreamDetailScreen() {
                 <Text style={styles.dreamText}>{dream.analysis}</Text>
               </View>
             ) : (
-              <TouchableOpacity
-                style={styles.generateButton}
-                onPress={handleGenerateAnalysis}
-                disabled={isGenerating}
-              >
-                {isGenerating ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Ionicons name="bulb" size={20} color="white" />
-                )}
-                <Text style={styles.generateButtonText}>
-                  {isGenerating ? 'Analyzing...' : 'Analyze Dream'}
+              <View style={styles.emptyState}>
+                <Ionicons name="bulb-outline" size={48} color={theme.colors.textSecondary} style={styles.emptyStateIcon} />
+                <Text style={styles.emptyStateText}>
+                  Discover the hidden meanings in your dream
                 </Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.generateButton}
+                  onPress={handleGenerateAnalysis}
+                  disabled={isGenerating}
+                >
+                  {isGenerating ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Ionicons name="bulb" size={20} color="white" />
+                  )}
+                  <Text style={styles.generateButtonText}>
+                    {isGenerating ? 'Analyzing...' : 'Analyze Dream'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         )}
@@ -519,6 +587,13 @@ export default function DreamDetailScreen() {
 
       {/* Floating Actions */}
       <View style={styles.floatingActions}>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.secondaryAction]}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={18} color={theme.colors.text} />
+          <Text style={styles.secondaryActionText}>Back</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, styles.dangerAction]}
           onPress={handleDelete}

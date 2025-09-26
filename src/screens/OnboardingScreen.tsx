@@ -7,8 +7,8 @@ import {
   StyleSheet,
   Dimensions,
   TouchableOpacity,
-  Image,
   SafeAreaView,
+  FlatList,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -71,7 +71,7 @@ export default function OnboardingScreen() {
   const navigation = useNavigation<NavigationProp>();
   const scrollX = useSharedValue(0);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const flatListRef = useRef<any>(null);
+  const flatListRef = useRef<FlatList>(null);
 
   const handleNext = () => {
     if (currentIndex < slides.length - 1) {
@@ -92,27 +92,6 @@ export default function OnboardingScreen() {
   };
 
   const renderSlide = ({ item, index }: { item: OnboardingSlide; index: number }) => {
-    const inputRange = [(index - 1) * SCREEN_WIDTH, index * SCREEN_WIDTH, (index + 1) * SCREEN_WIDTH];
-    
-    const animatedStyle = useAnimatedStyle(() => ({
-      transform: [
-        {
-          scale: interpolate(
-            scrollX.value,
-            inputRange,
-            [0.9, 1, 0.9],
-            Extrapolate.CLAMP
-          ),
-        },
-      ],
-      opacity: interpolate(
-        scrollX.value,
-        inputRange,
-        [0.5, 1, 0.5],
-        Extrapolate.CLAMP
-      ),
-    }));
-
     return (
       <View style={styles.slide}>
         <LinearGradient
@@ -121,13 +100,13 @@ export default function OnboardingScreen() {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         />
-        <Animated.View style={[styles.slideContent, animatedStyle]}>
+        <View style={styles.slideContent}>
           <View style={styles.iconContainer}>
             <Ionicons name={item.icon} size={120} color="white" />
           </View>
           <Text style={styles.title}>{item.title}</Text>
           <Text style={styles.description}>{item.description}</Text>
-        </Animated.View>
+        </View>
       </View>
     );
   };
@@ -136,27 +115,14 @@ export default function OnboardingScreen() {
     return (
       <View style={styles.dotsContainer}>
         {slides.map((_, index) => {
-          const inputRange = [(index - 1) * SCREEN_WIDTH, index * SCREEN_WIDTH, (index + 1) * SCREEN_WIDTH];
-          
-          const animatedDotStyle = useAnimatedStyle(() => ({
-            width: interpolate(
-              scrollX.value,
-              inputRange,
-              [8, 20, 8],
-              Extrapolate.CLAMP
-            ),
-            opacity: interpolate(
-              scrollX.value,
-              inputRange,
-              [0.3, 1, 0.3],
-              Extrapolate.CLAMP
-            ),
-          }));
-
+          const isActive = index === currentIndex;
           return (
-            <Animated.View
+            <View
               key={index}
-              style={[styles.dot, animatedDotStyle]}
+              style={[
+                styles.dot,
+                isActive && styles.dotActive,
+              ]}
             />
           );
         })}
@@ -224,9 +190,14 @@ export default function OnboardingScreen() {
     },
     dot: {
       height: 8,
+      width: 8,
       borderRadius: 4,
-      backgroundColor: 'white',
+      backgroundColor: 'rgba(255, 255, 255, 0.3)',
       marginHorizontal: 4,
+    },
+    dotActive: {
+      width: 20,
+      backgroundColor: 'white',
     },
     buttonRow: {
       flexDirection: 'row',
@@ -264,7 +235,7 @@ export default function OnboardingScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Animated.FlatList
+      <FlatList
         ref={flatListRef}
         data={slides}
         renderItem={renderSlide}
@@ -272,9 +243,6 @@ export default function OnboardingScreen() {
         pagingEnabled
         scrollEventThrottle={16}
         showsHorizontalScrollIndicator={false}
-        onScroll={(event) => {
-          scrollX.value = event.nativeEvent.contentOffset.x;
-        }}
         onMomentumScrollEnd={(event) => {
           const index = Math.round(event.nativeEvent.contentOffset.x / SCREEN_WIDTH);
           setCurrentIndex(index);
