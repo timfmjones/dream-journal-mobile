@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
+import { useRoute, useNavigation, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -35,14 +35,58 @@ export default function DreamDetailScreen() {
   const route = useRoute<RoutePropType>();
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
-  const { getDreamById, toggleFavorite, deleteDream, updateDream } = useDreams();
+  const { getDreamById, toggleFavorite, deleteDream, updateDream, dreams } = useDreams();
   
   const dreamId = route.params?.dreamId;
-  const foundDream = getDreamById(dreamId);
+  console.log('DreamDetailScreen - dreamId:', dreamId);
   
-  const [dream, setDream] = useState(foundDream);
+  const [dream, setDream] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'dream' | 'story' | 'analysis'>('dream');
   const [isGenerating, setIsGenerating] = useState(false);
+
+  // Load dream when screen focuses or dreams array changes
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('DreamDetailScreen - Focus effect triggered');
+      console.log('DreamDetailScreen - Looking for dream with ID:', dreamId);
+      console.log('DreamDetailScreen - Available dreams:', dreams.map(d => ({ id: d.id, title: d.title })));
+      
+      if (dreamId) {
+        const foundDream = getDreamById(dreamId);
+        console.log('DreamDetailScreen - Found dream:', foundDream);
+        
+        if (foundDream) {
+          setDream(foundDream);
+          setLoading(false);
+        } else {
+          // Wait a bit and try again, as the dream might still be propagating
+          setTimeout(() => {
+            const retryDream = getDreamById(dreamId);
+            console.log('DreamDetailScreen - Retry found dream:', retryDream);
+            if (retryDream) {
+              setDream(retryDream);
+            }
+            setLoading(false);
+          }, 500);
+        }
+      } else {
+        console.log('DreamDetailScreen - No dreamId provided');
+        setLoading(false);
+      }
+    }, [dreamId, dreams])
+  );
+
+  // Also update when dreams array changes
+  useEffect(() => {
+    if (dreamId && dreams.length > 0) {
+      const foundDream = getDreamById(dreamId);
+      if (foundDream) {
+        console.log('DreamDetailScreen - Updating dream from dreams array');
+        setDream(foundDream);
+      }
+    }
+  }, [dreams, dreamId]);
 
   const styles = StyleSheet.create({
     container: {
@@ -436,12 +480,26 @@ export default function DreamDetailScreen() {
     }
   };
 
+  // Show loading state
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={{ marginTop: 16, color: theme.colors.textSecondary }}>Loading dream...</Text>
+      </View>
+    );
+  }
+
   // Handle no dream found
   if (!dream) {
+    console.log('DreamDetailScreen - No dream to display');
     return (
       <View style={styles.errorContainer}>
         <Ionicons name="moon-outline" size={64} color={theme.colors.textSecondary} />
         <Text style={styles.errorText}>Dream not found</Text>
+        <Text style={{ color: theme.colors.textSecondary, marginBottom: 20 }}>
+          The dream you're looking for might have been deleted or is still loading.
+        </Text>
         <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
           <Text style={styles.backButtonText}>Go Back</Text>
         </TouchableOpacity>

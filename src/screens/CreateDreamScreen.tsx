@@ -120,9 +120,30 @@ export default function CreateDreamScreen() {
         playsInSilentModeIOS: true,
       });
 
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
+      // Use WAV format which has the best compatibility with OpenAI Whisper
+      const recordingOptions = {
+        android: {
+          extension: '.wav',
+          outputFormat: Audio.RECORDING_OPTION_ANDROID_OUTPUT_FORMAT_DEFAULT,
+          audioEncoder: Audio.RECORDING_OPTION_ANDROID_AUDIO_ENCODER_DEFAULT,
+          sampleRate: 16000, // Whisper's preferred sample rate
+          numberOfChannels: 1,
+          bitRate: 128000,
+        },
+        ios: {
+          extension: '.wav',
+          audioQuality: Audio.RECORDING_OPTION_IOS_AUDIO_QUALITY_HIGH,
+          sampleRate: 16000, // Whisper's preferred sample rate
+          numberOfChannels: 1,
+          bitRate: 128000,
+          linearPCMBitDepth: 16,
+          linearPCMIsBigEndian: false,
+          linearPCMIsFloat: false,
+        },
+      };
+
+      console.log('Starting recording with options:', recordingOptions);
+      const { recording } = await Audio.Recording.createAsync(recordingOptions);
 
       setRecording(recording);
       setIsRecording(true);
@@ -141,18 +162,27 @@ export default function CreateDreamScreen() {
       setIsRecording(false);
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
+      
+      console.log('Recording stopped');
+      console.log('Audio URI:', uri);
+      console.log('URI parts:', uri?.split('.'));
+      
+      if (!uri) {
+        throw new Error('No audio URI obtained from recording');
+      }
+      
       setAudioUri(uri);
       setRecording(null);
       setShowRecordingModal(false);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
       // Transcribe the audio
-      if (uri) {
-        await transcribeAudio(uri);
-      }
+      await transcribeAudio(uri);
     } catch (error) {
       console.error('Failed to stop recording:', error);
       Alert.alert('Error', 'Failed to stop recording. Please try again.');
+      setShowRecordingModal(false);
+      setRecording(null);
     }
   };
 
@@ -161,16 +191,61 @@ export default function CreateDreamScreen() {
     setGenerationProgress('Transcribing your dream...');
 
     try {
-      // For now, just use dummy text since API might not be working
-      setDreamText('This is a transcribed dream from your voice recording. [Audio transcription would go here]');
-      Toast.show({
-        type: 'success',
-        text1: 'Transcription Complete',
-        text2: 'Your dream has been transcribed successfully.',
-      });
-    } catch (error) {
+      console.log('Starting transcription with URI:', uri);
+      
+      // Pass the URI directly - React Native handles this differently than web
+      const result = await api.transcribeAudio(uri);
+      
+      if (result.data?.text) {
+        setDreamText(result.data.text);
+        Toast.show({
+          type: 'success',
+          text1: 'Transcription Complete',
+          text2: 'Your dream has been transcribed successfully.',
+        });
+      } else {
+        throw new Error(result.error || 'No transcription text received');
+      }
+    } catch (error: any) {
       console.error('Transcription error:', error);
-      Alert.alert('Error', 'Failed to transcribe audio. Please try again.');
+      
+      // Provide helpful alternatives when transcription fails
+      Alert.alert(
+        'Transcription Service Issue',
+        'The audio transcription service is having difficulties. This might be due to:\n\n• Audio format compatibility\n• Server configuration\n• API limitations\n\nYou can:',
+        [
+          {
+            text: 'Type Dream Instead',
+            onPress: () => {
+              setInputMode('text');
+              setAudioUri(null);
+              Toast.show({
+                type: 'info',
+                text1: 'Switched to Text Mode',
+                text2: 'Type your dream to continue.',
+              });
+            }
+          },
+          {
+            text: 'Use Sample Dream',
+            onPress: () => {
+              setDreamText('Last night I had the most vivid dream. I was walking through a mystical forest where the trees had glowing leaves that changed colors with each breath of wind. The path beneath my feet was made of soft moss that sparkled like stardust. As I walked deeper into the forest, I discovered a hidden clearing with a crystalline lake. The water was so clear I could see another world reflected beneath - a mirror universe where everything moved in reverse. Suddenly, I realized I could fly, and I soared above the treetops, feeling completely free and weightless. The dream felt so real that when I woke up, I could still feel the sensation of flying.');
+              Toast.show({
+                type: 'success',
+                text1: 'Sample Dream Added',
+                text2: 'You can edit or use this as is.',
+              });
+            }
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => {
+              setAudioUri(null);
+            }
+          }
+        ]
+      );
     } finally {
       setIsTranscribing(false);
       setGenerationProgress('');
@@ -190,26 +265,52 @@ export default function CreateDreamScreen() {
       // Generate title if not provided
       if (!title) {
         setGenerationProgress('Creating title...');
-        // For now, just create a simple title
-        setTitle(`Dream on ${new Date().toLocaleDateString()}`);
+        const titleResult = await api.generateTitle(dreamText);
+        if (titleResult.data?.title) {
+          setTitle(titleResult.data.title);
+        } else {
+          // Fallback title if API fails
+          setTitle(`Dream on ${new Date().toLocaleDateString()}`);
+        }
       }
 
       let story, analysis, images;
 
       if (options.mode === 'story') {
         setGenerationProgress('Generating your fairy tale...');
-        // Simulate story generation
-        story = 'A magical fairy tale based on your dream...';
+        const storyResult = await api.generateStory(
+          dreamText,
+          options.tone || 'whimsical',
+          options.length || 'medium'
+        );
+        
+        if (storyResult.data?.story) {
+          story = storyResult.data.story;
+          
+          if (options.generateImages) {
+            setGenerationProgress('Creating magical illustrations...');
+            const imagesResult = await api.generateImages(story, options.tone || 'whimsical');
+            if (imagesResult.data?.images) {
+              images = imagesResult.data.images;
+            }
+          }
+        } else {
+          throw new Error('Failed to generate story');
+        }
       } else if (options.mode === 'analysis') {
         setGenerationProgress('Analyzing your dream...');
-        // Simulate analysis
-        analysis = 'Deep insights about your dream...';
+        const analysisResult = await api.analyzeDream(dreamText);
+        if (analysisResult.data?.analysis) {
+          analysis = analysisResult.data.analysis;
+        } else {
+          throw new Error('Failed to analyze dream');
+        }
       }
 
       // Save the dream
       setGenerationProgress('Saving your dream...');
       
-      // Create the dream object first
+      // Create the dream object
       const dreamData = {
         title: title || 'Untitled Dream',
         originalDream: dreamText,
