@@ -222,22 +222,6 @@ export default function HomeScreen() {
       shadowRadius: 8,
       elevation: 8,
     },
-    testSection: {
-      padding: 20,
-      backgroundColor: '#f0f0f0',
-      margin: 10,
-      borderRadius: 10,
-    },
-    testButton: {
-      backgroundColor: '#6B46C1',
-      padding: 12,
-      borderRadius: 8,
-      marginBottom: 10,
-    },
-    testButtonText: {
-      color: 'white',
-      textAlign: 'center',
-    },
   });
 
   return (
@@ -261,34 +245,6 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <Text style={styles.greeting}>{greeting}</Text>
           <Text style={styles.date}>{format(new Date(), 'EEEE, MMMM d, yyyy')}</Text>
-        </View>
-
-        {/* Test Navigation Buttons - Remove these in production */}
-        <View style={styles.testSection}>
-          <Text style={{ marginBottom: 10 }}>Navigation Test:</Text>
-          <TouchableOpacity
-            style={styles.testButton}
-            onPress={() => {
-              console.log('TEST: Navigating to DreamDetail with ID: test-123');
-              navigation.navigate('DreamDetail', { dreamId: 'test-123' });
-            }}
-          >
-            <Text style={styles.testButtonText}>
-              Test Navigate to Dream (ID: test-123)
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.testButton, { backgroundColor: '#7C3AED' }]}
-            onPress={() => {
-              console.log('TEST: Pushing DreamDetail with ID: push-456');
-              navigation.push('DreamDetail' as any, { dreamId: 'push-456' });
-            }}
-          >
-            <Text style={styles.testButtonText}>
-              Test Push to Dream (ID: push-456)
-            </Text>
-          </TouchableOpacity>
         </View>
 
         <View style={styles.quickActions}>

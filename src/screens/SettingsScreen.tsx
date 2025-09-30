@@ -10,15 +10,19 @@ import {
   Switch,
   Alert,
   Linking,
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as LocalAuthentication from 'expo-local-authentication';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useDreams } from '../hooks/useDreams';
 import { api } from '../services/api';
+import Toast from 'react-native-toast-message';
 
 interface SettingSection {
   title: string;
@@ -37,13 +41,15 @@ interface SettingItem {
 
 export default function SettingsScreen() {
   const { theme, isDark, toggleTheme } = useTheme();
-  const { user, isGuest, logout, biometricsEnabled, enableBiometrics } = useAuth();
-  const { dreams } = useDreams();
+  const { user, isGuest, logout, biometricsEnabled, enableBiometrics, signInWithGoogle, continueAsGuest } = useAuth();
+  const { dreams, refreshDreams } = useDreams();
   const insets = useSafeAreaInsets();
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [autoPlayAudio, setAutoPlayAudio] = useState(true);
   const [preferredVoice, setPreferredVoice] = useState('alloy');
+  const [showSignInModal, setShowSignInModal] = useState(false);
+  const [isSigningIn, setIsSigningIn] = useState(false);
   const [stats, setStats] = useState({
     totalDreams: 0,
     dreamsThisMonth: 0,
@@ -53,7 +59,7 @@ export default function SettingsScreen() {
   useEffect(() => {
     loadSettings();
     loadStats();
-  }, []);
+  }, [user, isGuest]);
 
   const loadSettings = async () => {
     try {
@@ -71,25 +77,35 @@ export default function SettingsScreen() {
 
   const loadStats = async () => {
     if (!isGuest && user) {
-      const response = await api.getUserStats();
-      if (response.data) {
-        setStats({
-          totalDreams: response.data.totalDreams,
-          dreamsThisMonth: response.data.dreamsThisMonth,
-          favoriteDreams: response.data.favoriteDreams,
-        });
+      try {
+        const response = await api.getUserStats();
+        if (response.data) {
+          setStats({
+            totalDreams: response.data.totalDreams,
+            dreamsThisMonth: response.data.dreamsThisMonth,
+            favoriteDreams: response.data.favoriteDreams,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load stats from API:', error);
+        // Fallback to local stats
+        calculateLocalStats();
       }
     } else {
-      setStats({
-        totalDreams: dreams.length,
-        dreamsThisMonth: dreams.filter(d => {
-          const date = new Date(d.date);
-          const now = new Date();
-          return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
-        }).length,
-        favoriteDreams: dreams.filter(d => d.isFavorite).length,
-      });
+      calculateLocalStats();
     }
+  };
+
+  const calculateLocalStats = () => {
+    setStats({
+      totalDreams: dreams.length,
+      dreamsThisMonth: dreams.filter(d => {
+        const date = new Date(d.date);
+        const now = new Date();
+        return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+      }).length,
+      favoriteDreams: dreams.filter(d => d.isFavorite).length,
+    });
   };
 
   const saveSettings = async (key: string, value: any) => {
@@ -133,6 +149,52 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleSignInWithGoogle = async () => {
+    try {
+      setIsSigningIn(true);
+      await signInWithGoogle();
+      setShowSignInModal(false);
+      await refreshDreams();
+      Toast.show({
+        type: 'success',
+        text1: 'Signed In Successfully',
+        text2: `Welcome back, ${user?.displayName || 'User'}!`,
+      });
+    } catch (error) {
+      console.error('Google sign-in error:', error);
+      Alert.alert(
+        'Sign In Failed',
+        'Unable to sign in with Google. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
+  const handleSwitchToGuestMode = async () => {
+    Alert.alert(
+      'Switch to Guest Mode',
+      'You will be signed out and your dreams will only be saved locally on this device. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue as Guest',
+          onPress: async () => {
+            await logout();
+            await continueAsGuest();
+            setShowSignInModal(false);
+            Toast.show({
+              type: 'info',
+              text1: 'Switched to Guest Mode',
+              text2: 'Dreams will be saved locally only',
+            });
+          },
+        },
+      ]
+    );
+  };
+
   const handleLogout = () => {
     Alert.alert(
       'Sign Out',
@@ -142,7 +204,14 @@ export default function SettingsScreen() {
         {
           text: 'Sign Out',
           style: 'destructive',
-          onPress: logout,
+          onPress: async () => {
+            await logout();
+            Toast.show({
+              type: 'info',
+              text1: 'Signed Out',
+              text2: 'You have been signed out successfully',
+            });
+          },
         },
       ]
     );
@@ -177,6 +246,12 @@ export default function SettingsScreen() {
           type: 'info',
         },
         {
+          icon: 'sync',
+          title: 'Sync Status',
+          subtitle: 'Dreams synced across devices',
+          type: 'info',
+        },
+        {
           icon: 'log-out',
           title: 'Sign Out',
           type: 'button',
@@ -186,8 +261,15 @@ export default function SettingsScreen() {
         {
           icon: 'person',
           title: 'Guest Mode',
-          subtitle: 'Sign in to sync across devices',
+          subtitle: 'Dreams saved locally only',
           type: 'info',
+        },
+        {
+          icon: 'log-in',
+          title: 'Sign In to Account',
+          subtitle: 'Sync dreams across devices',
+          type: 'button',
+          onPress: () => setShowSignInModal(true),
         },
       ],
     },
@@ -370,6 +452,115 @@ export default function SettingsScreen() {
     chevron: {
       marginLeft: 8,
     },
+    // Modal styles
+    modalContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    modalContent: {
+      width: '85%',
+      backgroundColor: theme.colors.background,
+      borderRadius: 20,
+      overflow: 'hidden',
+    },
+    modalGradient: {
+      paddingTop: 30,
+      paddingBottom: 20,
+      alignItems: 'center',
+    },
+    modalIcon: {
+      width: 80,
+      height: 80,
+      borderRadius: 40,
+      backgroundColor: 'rgba(255, 255, 255, 0.2)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    modalTitle: {
+      fontSize: 24,
+      fontFamily: 'Playfair-Bold',
+      color: 'white',
+      marginBottom: 8,
+    },
+    modalSubtitle: {
+      fontSize: 14,
+      fontFamily: 'Inter-Regular',
+      color: 'rgba(255, 255, 255, 0.9)',
+      textAlign: 'center',
+      paddingHorizontal: 20,
+    },
+    modalButtons: {
+      padding: 20,
+    },
+    googleButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'white',
+      paddingVertical: 14,
+      paddingHorizontal: 20,
+      borderRadius: 12,
+      marginBottom: 12,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    googleButtonText: {
+      fontSize: 16,
+      fontFamily: 'Inter-SemiBold',
+      color: '#1F2937',
+      marginLeft: 12,
+    },
+    divider: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginVertical: 16,
+    },
+    dividerLine: {
+      flex: 1,
+      height: 1,
+      backgroundColor: theme.colors.border,
+    },
+    dividerText: {
+      marginHorizontal: 12,
+      fontSize: 12,
+      fontFamily: 'Inter-Medium',
+      color: theme.colors.textSecondary,
+    },
+    guestButton: {
+      alignItems: 'center',
+      paddingVertical: 14,
+      paddingHorizontal: 20,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+    },
+    guestButtonText: {
+      fontSize: 16,
+      fontFamily: 'Inter-Medium',
+      color: theme.colors.text,
+    },
+    cancelButton: {
+      alignItems: 'center',
+      paddingVertical: 14,
+      marginTop: 8,
+    },
+    cancelButtonText: {
+      fontSize: 14,
+      fontFamily: 'Inter-Medium',
+      color: theme.colors.textSecondary,
+    },
+    loadingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
   });
 
   const renderItem = (item: SettingItem, isLast: boolean) => {
@@ -424,6 +615,80 @@ export default function SettingsScreen() {
           </View>
         ))}
       </ScrollView>
+
+      {/* Sign In Modal */}
+      <Modal
+        visible={showSignInModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSignInModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <LinearGradient
+              colors={[theme.colors.primary, theme.colors.secondary]}
+              style={styles.modalGradient}
+            >
+              <View style={styles.modalIcon}>
+                <Ionicons name="moon" size={40} color="white" />
+              </View>
+              <Text style={styles.modalTitle}>Sign In to DreamSprout</Text>
+              <Text style={styles.modalSubtitle}>
+                Sync your dreams across all your devices and never lose your magical stories
+              </Text>
+            </LinearGradient>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.googleButton}
+                onPress={handleSignInWithGoogle}
+                disabled={isSigningIn}
+              >
+                {isSigningIn ? (
+                  <ActivityIndicator size="small" color="#EA4335" />
+                ) : (
+                  <>
+                    <Ionicons name="logo-google" size={20} color="#EA4335" />
+                    <Text style={styles.googleButtonText}>Sign in with Google</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {user && !isGuest ? null : (
+                <>
+                  <View style={styles.divider}>
+                    <View style={styles.dividerLine} />
+                    <Text style={styles.dividerText}>OR</Text>
+                    <View style={styles.dividerLine} />
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.guestButton}
+                    onPress={handleSwitchToGuestMode}
+                    disabled={isSigningIn}
+                  >
+                    <Text style={styles.guestButtonText}>Continue as Guest</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => setShowSignInModal(false)}
+                disabled={isSigningIn}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {isSigningIn && (
+            <View style={styles.loadingOverlay}>
+              <ActivityIndicator size="large" color="white" />
+            </View>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
