@@ -249,6 +249,15 @@ export function useDreams() {
       
       setDreams(updatedDreams);
       
+      // Update in recent dreams and favorites as well
+      setRecentDreams(prev => prev.map(d => 
+        d.id === dreamId ? { ...d, ...updates, updatedAt: new Date().toISOString() } : d
+      ));
+      
+      setFavoriteDreams(prev => prev.map(d => 
+        d.id === dreamId ? { ...d, ...updates, updatedAt: new Date().toISOString() } : d
+      ));
+      
       if (isGuest) {
         await AsyncStorage.setItem(DREAMS_STORAGE_KEY, JSON.stringify(updatedDreams));
       } else if (user) {
@@ -260,17 +269,36 @@ export function useDreams() {
             setDreams(prevDreams => 
               prevDreams.map(d => d.id === dreamId ? mappedDream : d)
             );
+            setRecentDreams(prev => prev.map(d => 
+              d.id === dreamId ? mappedDream : d
+            ));
+            setFavoriteDreams(prev => prev.map(d => 
+              d.id === dreamId ? mappedDream : d
+            ));
             return mappedDream;
           }
         } catch (error) {
           console.error('API update error:', error);
+          // If API fails, still return the local update
         }
       }
       
       const updatedDream = updatedDreams.find(d => d.id === dreamId)!;
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Dream Updated',
+        text2: 'Your changes have been saved.',
+      });
+      
       return updatedDream;
     } catch (error) {
       console.error('Error updating dream:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Update Failed',
+        text2: 'Failed to update dream. Please try again.',
+      });
       throw error;
     }
   };

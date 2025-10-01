@@ -21,14 +21,22 @@ const { width: screenWidth } = Dimensions.get('window');
 interface DreamCardProps {
   dream: Dream;
   onPress: () => void;
+  onLongPress?: () => void;
 }
 
-export default function DreamCard({ dream, onPress }: DreamCardProps) {
+export default function DreamCard({ dream, onPress, onLongPress }: DreamCardProps) {
   const { theme } = useTheme();
 
   const handlePress = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onPress();
+  };
+
+  const handleLongPress = async () => {
+    if (onLongPress) {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      onLongPress();
+    }
   };
 
   const getExcerpt = (text: string, maxLength: number = 100) => {
@@ -56,12 +64,21 @@ export default function DreamCard({ dream, onPress }: DreamCardProps) {
       alignItems: 'flex-start',
       marginBottom: 8,
     },
+    titleContainer: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginRight: 8,
+    },
     title: {
       fontSize: 18,
       fontFamily: 'Inter-SemiBold',
       color: theme.colors.text,
       flex: 1,
-      marginRight: 8,
+    },
+    editIndicator: {
+      marginLeft: 4,
+      opacity: 0.5,
     },
     favoriteIcon: {
       padding: 4,
@@ -101,18 +118,28 @@ export default function DreamCard({ dream, onPress }: DreamCardProps) {
       fontFamily: 'Inter-Medium',
       color: theme.colors.primary,
     },
+    editHint: {
+      fontSize: 10,
+      fontFamily: 'Inter-Regular',
+      color: theme.colors.textSecondary,
+      fontStyle: 'italic',
+      marginTop: 4,
+    },
   });
 
   return (
     <TouchableOpacity 
       style={styles.container} 
       onPress={handlePress}
+      onLongPress={handleLongPress}
       activeOpacity={0.7}
     >
       <View style={styles.header}>
-        <Text style={styles.title} numberOfLines={1}>
-          {dream.title}
-        </Text>
+        <View style={styles.titleContainer}>
+          <Text style={styles.title} numberOfLines={1}>
+            {dream.title}
+          </Text>
+        </View>
         {dream.isFavorite && (
           <View style={styles.favoriteIcon}>
             <Ionicons 

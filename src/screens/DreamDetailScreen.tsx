@@ -11,6 +11,9 @@ import {
   ActivityIndicator,
   Dimensions,
   Share,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -44,6 +47,9 @@ export default function DreamDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'dream' | 'story' | 'analysis'>('dream');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState('');
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
 
   // Load dream when screen focuses or dreams array changes
   useFocusEffect(
@@ -58,6 +64,7 @@ export default function DreamDetailScreen() {
         
         if (foundDream) {
           setDream(foundDream);
+          setEditedTitle(foundDream.title);
           setLoading(false);
         } else {
           // Wait a bit and try again, as the dream might still be propagating
@@ -66,6 +73,7 @@ export default function DreamDetailScreen() {
             console.log('DreamDetailScreen - Retry found dream:', retryDream);
             if (retryDream) {
               setDream(retryDream);
+              setEditedTitle(retryDream.title);
             }
             setLoading(false);
           }, 500);
@@ -84,9 +92,57 @@ export default function DreamDetailScreen() {
       if (foundDream) {
         console.log('DreamDetailScreen - Updating dream from dreams array');
         setDream(foundDream);
+        if (!isEditingTitle) {
+          setEditedTitle(foundDream.title);
+        }
       }
     }
   }, [dreams, dreamId]);
+
+  const handleStartEditTitle = () => {
+    setIsEditingTitle(true);
+    setEditedTitle(dream.title);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const handleCancelEditTitle = () => {
+    setIsEditingTitle(false);
+    setEditedTitle(dream.title);
+  };
+
+  const handleSaveTitle = async () => {
+    if (!editedTitle.trim()) {
+      Alert.alert('Invalid Title', 'Please enter a title for your dream.');
+      return;
+    }
+
+    if (editedTitle === dream.title) {
+      setIsEditingTitle(false);
+      return;
+    }
+
+    setIsSavingTitle(true);
+    try {
+      const updatedDream = await updateDream(dream.id, { title: editedTitle.trim() });
+      setDream(updatedDream);
+      setIsEditingTitle(false);
+      Toast.show({
+        type: 'success',
+        text1: 'Title Updated',
+        text2: 'Your dream title has been changed.',
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('Error updating title:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Update Failed',
+        text2: 'Unable to update the dream title.',
+      });
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
 
   const styles = StyleSheet.create({
     container: {
@@ -177,6 +233,52 @@ export default function DreamDetailScreen() {
       color: theme.colors.text,
       marginBottom: 16,
       lineHeight: 38,
+    },
+    titleContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    titleEditContainer: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    titleInput: {
+      flex: 1,
+      fontSize: 32,
+      fontFamily: 'Playfair-Bold',
+      color: theme.colors.text,
+      lineHeight: 38,
+      borderBottomWidth: 2,
+      borderBottomColor: theme.colors.primary,
+      paddingBottom: 4,
+      paddingTop: 0,
+    },
+    titleText: {
+      flex: 1,
+      fontSize: 32,
+      fontFamily: 'Playfair-Bold',
+      color: theme.colors.text,
+      lineHeight: 38,
+    },
+    editButton: {
+      padding: 8,
+      marginLeft: 8,
+    },
+    editActions: {
+      flexDirection: 'row',
+      gap: 8,
+      marginLeft: 8,
+    },
+    editActionButton: {
+      padding: 8,
+      borderRadius: 8,
+      backgroundColor: theme.colors.surface,
+    },
+    saveButton: {
+      backgroundColor: theme.colors.primary,
     },
     section: {
       marginBottom: 32,
@@ -508,7 +610,10 @@ export default function DreamDetailScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       {/* Background Gradient */}
       <LinearGradient
         colors={[theme.colors.primary + '20', 'transparent']}
@@ -547,7 +652,55 @@ export default function DreamDetailScreen() {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.date}>{formatDate(dream.date)}</Text>
-          <Text style={styles.title}>{dream.title}</Text>
+          
+          {/* Editable Title */}
+          <View style={styles.titleContainer}>
+            {isEditingTitle ? (
+              <View style={styles.titleEditContainer}>
+                <TextInput
+                  style={styles.titleInput}
+                  value={editedTitle}
+                  onChangeText={setEditedTitle}
+                  autoFocus
+                  maxLength={100}
+                  placeholder="Dream title"
+                  placeholderTextColor={theme.colors.textSecondary}
+                  editable={!isSavingTitle}
+                />
+                <View style={styles.editActions}>
+                  {isSavingTitle ? (
+                    <ActivityIndicator size="small" color={theme.colors.primary} />
+                  ) : (
+                    <>
+                      <TouchableOpacity 
+                        style={[styles.editActionButton, styles.saveButton]}
+                        onPress={handleSaveTitle}
+                      >
+                        <Ionicons name="checkmark" size={20} color="white" />
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={styles.editActionButton}
+                        onPress={handleCancelEditTitle}
+                      >
+                        <Ionicons name="close" size={20} color={theme.colors.text} />
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              </View>
+            ) : (
+              <View style={styles.titleEditContainer}>
+                <Text style={styles.titleText}>{dream.title}</Text>
+                <TouchableOpacity 
+                  style={styles.editButton}
+                  onPress={handleStartEditTitle}
+                >
+                  <Ionicons name="pencil" size={20} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+          
           <View style={styles.metaContainer}>
             {dream.inputMode === 'voice' && (
               <View style={styles.badge}>
@@ -660,6 +813,6 @@ export default function DreamDetailScreen() {
           <Text style={styles.actionText}>Delete</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
